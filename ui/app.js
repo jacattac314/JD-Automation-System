@@ -1,6 +1,151 @@
 // JD Automation System - Frontend Application
 
-// Sample job description
+// API Configuration
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
+// ============ Toast Notification System ============
+function initToasts() {
+    if (!document.getElementById('toast-container')) {
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+}
+
+function showToast(type, title, message, duration = 5000) {
+    initToasts();
+    const container = document.getElementById('toast-container');
+
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || 'ℹ️'}</span>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    container.appendChild(toast);
+
+    if (duration > 0) {
+        setTimeout(() => {
+            toast.classList.add('hiding');
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
+    }
+
+    return toast;
+}
+
+// ============ API Functions ============
+async function createGitHubRepo(name, description, isPrivate) {
+    const response = await fetch(`${API_BASE_URL}/api/create-repo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            token: settings.githubToken,
+            name: name,
+            description: description,
+            private: isPrivate
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to create repository');
+    }
+
+    return await response.json();
+}
+
+async function validateGitHubToken(token) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/validate-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+        });
+        return await response.json();
+    } catch (e) {
+        return { valid: false, message: 'API server not running' };
+    }
+}
+
+async function checkApiServer() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/health`);
+        if (response.ok) {
+            const data = await response.json();
+            return { running: true, gemini: data.gemini_available };
+        }
+        return { running: false, gemini: false };
+    } catch (e) {
+        return { running: false, gemini: false };
+    }
+}
+
+async function generateSpecification(jd, project, skills) {
+    if (!settings.geminiKey) {
+        throw new Error('Gemini API key not configured');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/generate-spec`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            gemini_key: settings.geminiKey,
+            job_description: jd,
+            project_title: project.title,
+            project_description: project.description,
+            skills: skills
+        })
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.message || 'Failed to generate specification');
+    }
+
+    return data.specification;
+}
+
+async function pushFilesToRepo(repoFullName, files) {
+    const response = await fetch(`${API_BASE_URL}/api/push-files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            token: settings.githubToken,
+            repo_full_name: repoFullName,
+            files: files,
+            commit_message: 'Add project files from JD Automation'
+        })
+    });
+
+    return await response.json();
+}
+
+async function analyzeJDWithAI(jd) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/analyze-jd`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gemini_key: settings.geminiKey,
+                job_description: jd
+            })
+        });
+        return await response.json();
+    } catch (e) {
+        return null;
+    }
+}
+
+
 const SAMPLE_JD = `Senior Full-Stack Software Engineer
 
 About the Role:
@@ -65,6 +210,45 @@ const PROJECT_TEMPLATES = {
 let runHistory = JSON.parse(localStorage.getItem('runHistory') || '[]');
 let settings = JSON.parse(localStorage.getItem('settings') || '{}');
 let currentRun = null;
+
+// Set default GitHub username if not already configured
+if (!settings.githubUsername) {
+    settings.githubUsername = 'jacattac314';
+    localStorage.setItem('settings', JSON.stringify(settings));
+}
+
+// GitHub username validation
+function isValidGitHubUsername(username) {
+    if (!username || typeof username !== 'string') return false;
+    // GitHub usernames: 1-39 chars, alphanumeric or hyphen, can't start/end with hyphen
+    const pattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+    return pattern.test(username) && !username.includes('--');
+}
+
+// Migrate existing history URLs to use correct GitHub username
+function migrateHistoryUrls(newUsername) {
+    if (!isValidGitHubUsername(newUsername)) {
+        alert('Please enter a valid GitHub username first.');
+        return 0;
+    }
+
+    let migratedCount = 0;
+    runHistory = runHistory.map(run => {
+        if (run.repoUrl) {
+            // Extract repo name from existing URL
+            const match = run.repoUrl.match(/github\.com\/[^\/]+\/(.+)$/);
+            if (match) {
+                const repoName = match[1];
+                run.repoUrl = `https://github.com/${newUsername}/${repoName}`;
+                migratedCount++;
+            }
+        }
+        return run;
+    });
+
+    localStorage.setItem('runHistory', JSON.stringify(runHistory));
+    return migratedCount;
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -212,8 +396,40 @@ async function startRun() {
     const jd = document.getElementById('jd-input').value.trim();
 
     if (!jd) {
-        alert('Please enter a job description');
+        showToast('warning', 'Missing Input', 'Please enter a job description');
         return;
+    }
+
+    // Check if API server is running
+    const apiStatus = await checkApiServer();
+    const apiRunning = apiStatus.running;
+    if (!apiRunning) {
+        showToast('warning', 'API Server Offline', 'Running in simulation mode. Start server with: python start.py', 8000);
+    }
+
+    // Validate GitHub token if API is running
+    if (apiRunning && settings.githubToken) {
+        const tokenResult = await validateGitHubToken(settings.githubToken);
+        if (tokenResult.valid && tokenResult.username) {
+            settings.githubUsername = tokenResult.username;
+            localStorage.setItem('settings', JSON.stringify(settings));
+            showToast('success', 'GitHub Connected', `Authenticated as ${tokenResult.username}`);
+        }
+    }
+
+    // Validate GitHub username before starting
+    if (!isValidGitHubUsername(settings.githubUsername)) {
+        const username = prompt('Please enter your GitHub username:');
+        if (!username) {
+            showToast('error', 'Username Required', 'A valid GitHub username is required to start a run.');
+            return;
+        }
+        if (!isValidGitHubUsername(username)) {
+            showToast('error', 'Invalid Username', 'Please check your GitHub username format and try again.');
+            return;
+        }
+        settings.githubUsername = username;
+        localStorage.setItem('settings', JSON.stringify(settings));
     }
 
     // Show progress section
@@ -243,16 +459,57 @@ async function startRun() {
         updateStepStatus('step-ideation', 'completed', `✓ ${project.title}`);
         updateProgress(33);
 
-        // Step 3: Create GitHub repo (simulated)
-        await simulateStep('step-github', 'Creating GitHub repository...', 1200);
+        // Step 3: Create GitHub repo
+        updateStepStatus('step-github', 'pending', 'Creating GitHub repository...');
         const repoName = project.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-        currentRun.repoUrl = `https://github.com/${settings.githubUsername || 'user'}/${repoName}`;
-        updateStepStatus('step-github', 'completed', '✓ Repository created');
+
+        // Try real API, fall back to simulation
+        if (apiRunning && settings.githubToken) {
+            try {
+                const repoResult = await createGitHubRepo(
+                    repoName,
+                    project.description,
+                    settings.privateRepos !== false
+                );
+                currentRun.repoUrl = repoResult.url;
+                currentRun.repoCreated = true;
+                updateStepStatus('step-github', 'completed', `✓ Repository created: ${repoResult.name}`);
+            } catch (repoError) {
+                // Fall back to simulation on error
+                console.error('GitHub API error:', repoError);
+                currentRun.repoUrl = `https://github.com/${settings.githubUsername}/${repoName}`;
+                currentRun.repoCreated = false;
+                updateStepStatus('step-github', 'completed', '⚠ Repository simulated (API error)');
+            }
+        } else {
+            // Simulation mode
+            await simulateStep('step-github', 'Creating GitHub repository...', 1200);
+            currentRun.repoUrl = `https://github.com/${settings.githubUsername}/${repoName}`;
+            currentRun.repoCreated = false;
+            updateStepStatus('step-github', 'completed', '✓ Repository simulated');
+        }
         updateProgress(50);
 
-        // Step 4: Generate spec (simulated)
-        await simulateStep('step-spec', 'Generating specification with Gemini...', 2000);
-        updateStepStatus('step-spec', 'completed', '✓ Specification generated');
+        // Step 4: Generate specification with Gemini
+        updateStepStatus('step-spec', 'active', 'Generating specification...');
+        document.getElementById('current-status').textContent = 'Generating specification with Gemini AI...';
+
+        let specification = null;
+        if (apiRunning && settings.geminiKey) {
+            try {
+                specification = await generateSpecification(jd, project, skills);
+                currentRun.specification = specification;
+                updateStepStatus('step-spec', 'completed', '✓ Specification generated with Gemini');
+            } catch (specError) {
+                console.error('Gemini error:', specError);
+                showToast('warning', 'Spec Simulated', 'Could not reach Gemini API: ' + specError.message);
+                await sleep(1500);
+                updateStepStatus('step-spec', 'completed', '⚠ Specification simulated');
+            }
+        } else {
+            await sleep(2000);
+            updateStepStatus('step-spec', 'completed', '✓ Specification simulated');
+        }
         updateProgress(66);
 
         // Step 5: Implementation (simulated)
@@ -269,11 +526,13 @@ async function startRun() {
         currentRun.status = 'success';
         currentRun.elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
+        showToast('success', 'Automation Complete!', `${currentRun.project} created in ${currentRun.elapsedTime}s`);
         showResults(currentRun);
 
     } catch (error) {
         currentRun.status = 'failed';
         currentRun.error = error.message;
+        showToast('error', 'Run Failed', error.message);
         document.getElementById('current-status').innerHTML = `<span style="color: var(--error)">❌ Error: ${error.message}</span>`;
     }
 
@@ -412,11 +671,55 @@ function saveSettings() {
     };
 
     localStorage.setItem('settings', JSON.stringify(settings));
-    alert('Settings saved successfully!');
+    showToast('success', 'Settings Saved', 'Your configuration has been saved successfully.');
 }
 
-function testConnection() {
-    alert('Connection test would verify API keys here.\n\nIn full version, this tests:\n• Gemini API\n• GitHub API\n• Anthropic API');
+async function testConnection() {
+    let results = [];
+
+    // Test API server
+    const apiRunning = await checkApiServer();
+    results.push(`API Server: ${apiRunning ? '✓ Running' : '✗ Not running'}`);
+
+    // Test GitHub token
+    const token = document.getElementById('github-token').value;
+    if (token) {
+        if (apiRunning) {
+            const tokenResult = await validateGitHubToken(token);
+            if (tokenResult.valid) {
+                results.push(`GitHub Token: ✓ Valid (${tokenResult.username})`);
+                // Auto-fill username
+                document.getElementById('github-username').value = tokenResult.username;
+            } else {
+                results.push(`GitHub Token: ✗ Invalid (${tokenResult.message})`);
+            }
+        } else {
+            results.push('GitHub Token: ⚠ Cannot test (API not running)');
+        }
+    } else {
+        results.push('GitHub Token: ⚠ Not provided');
+    }
+
+    alert('Connection Test Results:\n\n' + results.join('\n'));
+}
+
+function migrateHistory() {
+    const username = document.getElementById('github-username').value.trim();
+    if (!username) {
+        alert('Please enter your GitHub username above first, then click this button.');
+        return;
+    }
+
+    const count = migrateHistoryUrls(username);
+    if (count > 0) {
+        alert(`Successfully updated ${count} history entries to use username: ${username}`);
+        // Refresh history display if on history page
+        if (document.getElementById('history').classList.contains('active')) {
+            loadHistory();
+        }
+    } else {
+        alert('No history entries needed migration.');
+    }
 }
 
 // Utility
