@@ -1,149 +1,162 @@
 # Quick Start Guide
 
-## Installation
+Get your distributable app built in 5 minutes.
 
-1. **Clone or download this repository**
-
-2. **Install dependencies:**
+## Prerequisites Check
 
 ```bash
-pip install -r requirements.txt
+# Check Node.js (need 16+)
+node --version
+
+# Check Python (need 3.10+)
+python3 --version
+
+# Check Git
+git --version
 ```
 
-1. **Configure API keys:**
+Don't have them? Install from:
+- Node.js: https://nodejs.org/
+- Python: https://www.python.org/
+- Git: https://git-scm.com/
+
+## Build Your First Desktop App
+
+### Step 1: Install Dependencies
+```bash
+npm install
+```
+*Takes 2-3 minutes*
+
+### Step 2: Bundle Python Runtime
+```bash
+# macOS/Linux:
+python3 scripts/bundle-python.py
+
+# Windows:
+python scripts\bundle-python.py
+```
+*Takes 1-2 minutes*
+
+### Step 3: Build!
+```bash
+npm run build
+```
+*Takes 3-5 minutes*
+
+### Step 4: Find Your Installer
+```bash
+ls dist/
+```
+
+**You'll see:**
+- Windows: `.exe` files
+- macOS: `.dmg` files
+- Linux: `.AppImage`, `.deb`, `.rpm` files
+
+**Install and test it!**
+
+## Deploy PWA (Even Faster!)
+
+### Already Done!
+Your app is PWA-ready. Just deploy:
 
 ```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env with your actual API keys
-# OR use the setup wizard:
-python -m cli.main setup
+# Start local server
+python start.py
 ```
 
-## Required API Keys
+Open in Chrome → Click install icon in address bar → Done!
 
-- **Gemini API**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
-- **GitHub Token**: Create a [Personal Access Token](https://github.com/settings/tokens) with `repo` scope
-- **Anthropic API**: Get from [Anthropic Console](https://console.anthropic.com/)
-- **LinkedIn** (optional): Create a developer app at [LinkedIn Developers](https://www.linkedin.com/developers/)
+## Platform-Specific Builds
 
-## Usage
-
-### Basic Usage
-
+### Windows Only
 ```bash
-# Run with inline job description
-python -m cli.main run --jd "Your job description here..."
-
-# Run with JD from file
-python -m cli.main run --jd-file examples/sample_jd.txt
-
-# Skip LinkedIn integration
-python -m cli.main run --jd-file examples/sample_jd.txt --no-linkedin
+npm run build:win
 ```
 
-### View History
-
+### macOS Only
 ```bash
-python -m cli.main history
+npm run build:mac
 ```
 
-### Configuration
-
+### Linux Only
 ```bash
-python -m cli.main setup
+npm run build:linux
 ```
 
-## What It Does
+## Testing Your Build
 
-1. **Analyzes** the job description to extract required skills
-2. **Generates** a relevant project idea based on those skills
-3. **Creates** a GitHub repository for the project
-4. **Generates** a detailed specification using Gemini AI
-5. **Implements** the project autonomously using Claude Code
-6. **Organizes** all artifacts (code, docs, logs)
-7. **Publishes** to GitHub
-8. **Posts** to LinkedIn (optional)
+### Option 1: Install and Run
+1. Find installer in `dist/` folder
+2. Double-click to install
+3. Launch the app
+4. Test all features
 
-## Output
-
-Each run creates:
-
-- A GitHub repository with complete project code
-- Comprehensive documentation (README, Specification)
-- Implementation plan
-- Test files
-- Logs of the AI's implementation process
-- Run history for tracking
-
-## Example
-
+### Option 2: Development Mode (Faster)
 ```bash
-# Run with the sample job description
-python -m cli.main run --jd-file examples/sample_jd.txt
+# Terminal 1: Start Python backend
+python start.py
+
+# Terminal 2: Start Electron in dev mode
+npm run dev
 ```
 
-This will:
+Changes reload instantly - no rebuild needed!
 
-- Extract skills like Python, React, PostgreSQL, AWS
-- Propose a relevant project (e.g., "Real-time Collaboration Platform")
-- Create a private GitHub repo
-- Generate a detailed spec with Gemini
-- Implement the project with Claude Code
-- Push everything to GitHub
-- Add to your LinkedIn profile
+## First Release Checklist
 
-## Directory Structure
-
-After a run, you'll find:
-
-```
-projects/
-└── your-project-name/
-    ├── README.md
-    ├── JOB_DESCRIPTION.md
-    ├── requirements.json
-    ├── docs/
-    │   ├── Specification.md
-    │   └── PLAN.md
-    ├── src/
-    │   └── main.py
-    ├── tests/
-    └── logs/
-        └── claude_session.log
-```
+- [ ] Build installers
+- [ ] Test on your platform
+- [ ] Create GitHub Release (tag: v1.0.0)
+- [ ] Upload installers to release
+- [ ] Share download link
 
 ## Troubleshooting
 
-### "Configuration errors"
+**"Python not found"**
+```bash
+# Make sure Python is in PATH
+which python3  # macOS/Linux
+where python   # Windows
+```
 
-- Make sure all required API keys are set in `.env`
-- Run `python -m cli.main setup` to configure interactively
+**"npm install fails"**
+```bash
+# Clear and reinstall
+rm -rf node_modules package-lock.json
+npm install
+```
 
-### "Module not found"
+**"Build fails"**
+```bash
+# Check logs in dist/.electron-builder.log
+# Common issue: Missing Python in PATH
+```
 
-- Ensure you've run `pip install -r requirements.txt`
-- Check you're in the project directory
+## File Sizes
 
-### GitHub authentication fails
+**Installers:**
+- Windows: ~150 MB
+- macOS: ~160 MB
+- Linux: ~145-170 MB
 
-- Verify your token has `repo` scope
-- Check the token hasn't expired
-
-## Notes
-
-- All repositories are created as **private** by default
-- The Antigravity/Claude Code integration is currently simulated (see `modules/antigravity_runner.py`)
-- LinkedIn integration requires developer app approval
-- All data stays local except API calls to AI services
+**Why so large?**
+Includes Python runtime + all dependencies. Users don't need Python installed!
 
 ## Next Steps
 
-After generating your first project:
+- Read [BUILDING.md](BUILDING.md) for detailed build instructions
+- Read [DISTRIBUTION.md](DISTRIBUTION.md) for release strategies
+- Add your app icons to `electron/assets/icon.png`
+- Customize app name in `package.json`
 
-1. Review the generated code in the GitHub repo
-2. Clone it locally: `git clone <repo-url>`
-3. Follow the README in the generated project
-4. Customize as needed
-5. Use it in your portfolio!
+## Get Help
+
+- Build issues? Check [BUILDING.md](BUILDING.md) Troubleshooting section
+- Distribution questions? See [DISTRIBUTION.md](DISTRIBUTION.md)
+- Report bugs: GitHub Issues
+
+---
+
+**That's it! Your app is ready to distribute. 🎉**
