@@ -122,6 +122,11 @@ def open_browser():
     print(f"\n{Colors.BOLD}Opening browser...{Colors.END}")
     print(f"  {Colors.CYAN}🌐 UI:{Colors.END} {url}")
     print(f"  {Colors.CYAN}📚 API Docs:{Colors.END} {url}docs")
+    
+    # Fix for Windows browser launch issues
+    if sys.platform == 'win32' and 'HOME' not in os.environ:
+        os.environ['HOME'] = os.environ.get('USERPROFILE', '')
+        
     webbrowser.open(url)
 
 def main():
