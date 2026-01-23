@@ -2,6 +2,19 @@
 
 An autonomous system that transforms job descriptions into fully implemented GitHub projects with minimal user intervention.
 
+## 📥 Get the App
+
+**Desktop Applications:**
+- 🪟 **Windows:** Download installer or portable version
+- 🍎 **macOS:** Download for Intel or Apple Silicon
+- 🐧 **Linux:** AppImage, DEB, or RPM packages
+
+**Mobile & Web:**
+- 📱 **Progressive Web App:** Install on iOS, Android, or desktop browsers
+- 🌐 Works offline with full app experience
+
+See [BUILDING.md](BUILDING.md) for build instructions or [DISTRIBUTION.md](DISTRIBUTION.md) for deployment options.
+
 ## Overview
 
 This system leverages AI (Google Gemini for specifications, Anthropic Claude Code for implementation) to:
@@ -64,17 +77,43 @@ npm start
 
 ## Usage
 
+### Desktop App (Electron)
+
+**After installing the desktop app:**
+- Launch from Start Menu (Windows), Applications (macOS), or App Menu (Linux)
+- App includes bundled Python runtime - no Python installation needed
+- Auto-updates automatically
+
+### One-Click Startup (Development)
+
+```bash
+python start.py
+```
+
+This single command:
+- Checks dependencies
+- Starts the Python backend
+- Opens the UI in your browser
+- Ready in seconds!
+
 ### CLI Mode
 
 ```bash
 python -m jd_automation --jd "Your job description here"
 ```
 
-### UI Mode
+### UI Mode (Manual)
 
 ```bash
 python -m jd_automation ui
 ```
+
+### Progressive Web App (Mobile)
+
+1. Visit the app URL in your mobile browser
+2. Tap "Install" when prompted
+3. App installs to home screen
+4. Works offline!
 
 ## Security
 
