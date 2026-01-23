@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JD Automation System</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/static/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div class="app">
         <!-- Sidebar -->
@@ -15,7 +17,7 @@
                 <div class="logo-icon">⚡</div>
                 <span>JD Automation</span>
             </div>
-            
+
             <nav class="nav">
                 <a href="#" class="nav-item active" data-view="dashboard">
                     <span class="nav-icon">📊</span>
@@ -34,7 +36,7 @@
                     Settings
                 </a>
             </nav>
-            
+
             <div class="sidebar-footer">
                 <div class="status-indicator">
                     <span class="status-dot online"></span>
@@ -42,7 +44,7 @@
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <main class="main-content">
             <!-- Header -->
@@ -57,7 +59,7 @@
                     </button>
                 </div>
             </header>
-            
+
             <!-- Dashboard View -->
             <div id="dashboard-view" class="view active">
                 <div class="stats-grid">
@@ -90,7 +92,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card">
                     <div class="card-header">
                         <h2>Recent Runs</h2>
@@ -106,7 +108,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- New Run View -->
             <div id="new-run-view" class="view">
                 <div class="card">
@@ -125,7 +127,7 @@ Senior Full-Stack Developer
 - PostgreSQL database experience
 - AWS cloud knowledge"></textarea>
                         </div>
-                        
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label>
@@ -140,7 +142,7 @@ Senior Full-Stack Developer
                                 </label>
                             </div>
                         </div>
-                        
+
                         <div class="form-actions">
                             <button class="btn btn-secondary" onclick="loadSampleJD()">Load Sample JD</button>
                             <button class="btn btn-primary btn-lg" onclick="startRun()">
@@ -149,7 +151,7 @@ Senior Full-Stack Developer
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Progress Section (hidden initially) -->
                 <div id="progress-section" class="card" style="display: none;">
                     <div class="card-header">
@@ -188,17 +190,17 @@ Senior Full-Stack Developer
                                 <span class="step-status pending">Pending</span>
                             </div>
                         </div>
-                        
+
                         <div class="progress-bar-container">
                             <div class="progress-bar" id="overall-progress" style="width: 0%"></div>
                         </div>
-                        
+
                         <div id="current-status" class="current-status">
                             Ready to start...
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Results Section (hidden initially) -->
                 <div id="results-section" class="card" style="display: none;">
                     <div class="card-header">
@@ -209,7 +211,7 @@ Senior Full-Stack Developer
                     </div>
                 </div>
             </div>
-            
+
             <!-- History View -->
             <div id="history-view" class="view">
                 <div class="card">
@@ -221,7 +223,7 @@ Senior Full-Stack Developer
                     </div>
                 </div>
             </div>
-            
+
             <!-- Settings View -->
             <div id="settings-view" class="view">
                 <div class="card">
@@ -234,12 +236,14 @@ Senior Full-Stack Developer
                             <div class="form-group">
                                 <label for="gemini-key">Gemini API Key</label>
                                 <input type="password" id="gemini-key" placeholder="Enter your Gemini API key">
-                                <small>Get from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+                                <small>Get from <a href="https://makersuite.google.com/app/apikey"
+                                        target="_blank">Google AI Studio</a></small>
                             </div>
                             <div class="form-group">
                                 <label for="github-token">GitHub Token</label>
                                 <input type="password" id="github-token" placeholder="Enter your GitHub token">
-                                <small>Create at <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings</a></small>
+                                <small>Create at <a href="https://github.com/settings/tokens" target="_blank">GitHub
+                                        Settings</a></small>
                             </div>
                             <div class="form-group">
                                 <label for="github-username">GitHub Username</label>
@@ -248,10 +252,11 @@ Senior Full-Stack Developer
                             <div class="form-group">
                                 <label for="anthropic-key">Anthropic API Key</label>
                                 <input type="password" id="anthropic-key" placeholder="Enter your Anthropic API key">
-                                <small>Get from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a></small>
+                                <small>Get from <a href="https://console.anthropic.com/" target="_blank">Anthropic
+                                        Console</a></small>
                             </div>
                         </div>
-                        
+
                         <div class="settings-section">
                             <h3>Preferences</h3>
                             <div class="form-group">
@@ -267,7 +272,17 @@ Senior Full-Stack Developer
                                 </label>
                             </div>
                         </div>
-                        
+
+                        <div class="settings-section">
+                            <h3>History Migration</h3>
+                            <div class="form-group">
+                                <small>If your previous runs have broken repository URLs, click below to fix them using
+                                    your current GitHub username.</small>
+                                <button class="btn btn-secondary" onclick="migrateHistory()"
+                                    style="margin-top: 8px;">Fix History URLs</button>
+                            </div>
+                        </div>
+
                         <div class="form-actions">
                             <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
                             <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
@@ -277,7 +292,8 @@ Senior Full-Stack Developer
             </div>
         </main>
     </div>
-    
-    <script src="app.js"></script>
+
+    <script src="/static/app.js"></script>
 </body>
+
 </html>
