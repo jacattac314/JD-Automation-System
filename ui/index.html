@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JD Automation System</title>
+
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Transform job descriptions into fully implemented GitHub projects using AI">
+    <meta name="theme-color" content="#6c5ce7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JD Auto">
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+
+    <!-- Styles -->
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -277,7 +295,23 @@ Senior Full-Stack Developer
             </div>
         </main>
     </div>
-    
+
+    <!-- PWA Install Banner (hidden by default) -->
+    <div id="pwa-install-banner" class="pwa-install-banner" style="display: none;">
+        <div class="pwa-banner-content">
+            <div class="pwa-banner-icon">📱</div>
+            <div class="pwa-banner-text">
+                <strong>Install JD Automation</strong>
+                <p>Install as an app for quick access</p>
+            </div>
+            <div class="pwa-banner-actions">
+                <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
+                <button class="btn btn-secondary btn-sm" onclick="dismissPWAPrompt()">Later</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
+    <script src="pwa-init.js"></script>
 </body>
 </html>
