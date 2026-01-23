@@ -1,0 +1,39 @@
+# Example Job Description
+
+**Senior Full-Stack Software Engineer**
+
+**About the Role:**
+We're seeking an experienced Full-Stack Software Engineer to join our growing team. You'll be responsible for building scalable web applications and APIs.
+
+**Requirements:**
+- 5+ years of professional software development experience
+- Strong proficiency in Python and modern JavaScript
+- Experience with React and Node.js
+- Database design and optimization (PostgreSQL, MongoDB)
+- RESTful API development
+- Cloud platforms (AWS preferred)
+- Git version control
+- Agile/Scrum methodologies
+
+**Responsibilities:**
+- Design and implement new features
+- Write clean, maintainable code
+- Participate in code reviews
+- Collaborate with cross-functional teams
+- Optimize application performance
+- Mentor junior developers
+
+**Nice to Have:**
+- Docker and Kubernetes experience
+- CI/CD pipeline setup
+- Machine learning basics
+- TypeScript
+- GraphQL
+
+**Benefits:**
+- Competitive salary
+- Remote-friendly
+- Health insurance
+- Professional development budget
+
+Apply now to join our innovative team!

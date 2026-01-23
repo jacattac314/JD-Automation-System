@@ -1,0 +1,39 @@
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+
+# GitHub integration
+PyGithub>=2.1.1
+
+# AI/LLM clients
+google-generativeai>=0.3.0
+anthropic>=0.8.0
+
+# NLP for JD analysis
+spacy>=3.7.0
+nltk>=3.8.1
+
+# CLI
+click>=8.1.7
+rich>=13.7.0
+
+# Web UI backend
+fastapi>=0.108.0
+uvicorn>=0.25.0
+websockets>=12.0
+
+# LinkedIn integration
+requests-oauthlib>=1.3.1
+
+# Logging and monitoring
+loguru>=0.7.2
+
+# Security
+keyring>=24.3.0
+cryptography>=41.0.7
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-mock>=3.12.0

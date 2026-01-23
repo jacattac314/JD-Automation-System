@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JD Automation System</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">⚡</div>
+                <span>JD Automation</span>
+            </div>
+            
+            <nav class="nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    Dashboard
+                </a>
+                <a href="#" class="nav-item" data-view="new-run">
+                    <span class="nav-icon">🚀</span>
+                    New Run
+                </a>
+                <a href="#" class="nav-item" data-view="history">
+                    <span class="nav-icon">📜</span>
+                    History
+                </a>
+                <a href="#" class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    Settings
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot online"></span>
+                    System Ready
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-title">
+                    <h1>Dashboard</h1>
+                    <p class="subtitle">Transform job descriptions into projects</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="showView('new-run')">
+                        <span>+</span> New Run
+                    </button>
+                </div>
+            </header>
+            
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📁</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="total-runs">0</span>
+                            <span class="stat-label">Total Runs</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="successful-runs">0</span>
+                            <span class="stat-label">Successful</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⏱️</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="avg-time">0s</span>
+                            <span class="stat-label">Avg Time</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔧</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="skills-extracted">0</span>
+                            <span class="stat-label">Skills Extracted</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Recent Runs</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="recent-runs" class="runs-list">
+                            <div class="empty-state">
+                                <span class="empty-icon">📭</span>
+                                <p>No runs yet. Start your first automation!</p>
+                                <button class="btn btn-primary" onclick="showView('new-run')">Create New Run</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- New Run View -->
+            <div id="new-run-view" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>🚀 New Automation Run</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="jd-input">Job Description</label>
+                            <textarea id="jd-input" rows="10" placeholder="Paste your job description here...
+
+Example:
+Senior Full-Stack Developer
+- 5+ years in Python and JavaScript
+- React and Node.js expertise
+- PostgreSQL database experience
+- AWS cloud knowledge"></textarea>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="auto-confirm" checked>
+                                    Auto-confirm project ideas
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="skip-linkedin">
+                                    Skip LinkedIn integration
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button class="btn btn-secondary" onclick="loadSampleJD()">Load Sample JD</button>
+                            <button class="btn btn-primary btn-lg" onclick="startRun()">
+                                🚀 Start Automation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Progress Section (hidden initially) -->
+                <div id="progress-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>⚡ Pipeline Progress</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress-steps">
+                            <div class="progress-step" id="step-analysis">
+                                <span class="step-icon">🔍</span>
+                                <span class="step-label">Extracting Skills</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                            <div class="progress-step" id="step-ideation">
+                                <span class="step-icon">💡</span>
+                                <span class="step-label">Generating Project Idea</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                            <div class="progress-step" id="step-github">
+                                <span class="step-icon">📦</span>
+                                <span class="step-label">Creating GitHub Repo</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                            <div class="progress-step" id="step-spec">
+                                <span class="step-icon">📝</span>
+                                <span class="step-label">Generating Specification</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                            <div class="progress-step" id="step-implement">
+                                <span class="step-icon">🤖</span>
+                                <span class="step-label">AI Implementation</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                            <div class="progress-step" id="step-publish">
+                                <span class="step-icon">🚀</span>
+                                <span class="step-label">Publishing</span>
+                                <span class="step-status pending">Pending</span>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="overall-progress" style="width: 0%"></div>
+                        </div>
+                        
+                        <div id="current-status" class="current-status">
+                            Ready to start...
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Results Section (hidden initially) -->
+                <div id="results-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>✅ Results</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="results-content"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- History View -->
+            <div id="history-view" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📜 Run History</h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="history-list" class="runs-list"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Settings View -->
+            <div id="settings-view" class="view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>⚙️ Configuration</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="settings-section">
+                            <h3>API Keys</h3>
+                            <div class="form-group">
+                                <label for="gemini-key">Gemini API Key</label>
+                                <input type="password" id="gemini-key" placeholder="Enter your Gemini API key">
+                                <small>Get from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+                            </div>
+                            <div class="form-group">
+                                <label for="github-token">GitHub Token</label>
+                                <input type="password" id="github-token" placeholder="Enter your GitHub token">
+                                <small>Create at <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings</a></small>
+                            </div>
+                            <div class="form-group">
+                                <label for="github-username">GitHub Username</label>
+                                <input type="text" id="github-username" placeholder="Your GitHub username">
+                            </div>
+                            <div class="form-group">
+                                <label for="anthropic-key">Anthropic API Key</label>
+                                <input type="password" id="anthropic-key" placeholder="Enter your Anthropic API key">
+                                <small>Get from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a></small>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>Preferences</h3>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="private-repos" checked>
+                                    Create private repositories by default
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="enable-linkedin">
+                                    Enable LinkedIn integration
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                            <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
