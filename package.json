@@ -21,7 +21,9 @@
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
     "pack": "electron-builder --dir",
-    "release": "electron-builder build --publish always"
+    "release": "electron-builder build --publish always",
+    "icons:generate": "python3 scripts/generate-icons-svg.py",
+    "icons:convert": "node scripts/convert-svg-to-png.js"
   },
   "dependencies": {
     "electron-log": "^5.1.0",

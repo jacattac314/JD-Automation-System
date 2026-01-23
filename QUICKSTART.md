@@ -28,7 +28,21 @@ npm install
 ```
 *Takes 2-3 minutes*
 
-### Step 2: Bundle Python Runtime
+### Step 2: Generate Icons (Optional)
+```bash
+# Generate SVG placeholder icons
+npm run icons:generate
+
+# Convert to PNG (requires sharp package)
+npm install sharp
+npm run icons:convert
+
+# OR use online converter if sharp fails:
+# https://cloudconvert.com/svg-to-png
+```
+*Skip this for now and use default icons, or add custom icons later*
+
+### Step 3: Bundle Python Runtime
 ```bash
 # macOS/Linux:
 python3 scripts/bundle-python.py
@@ -38,13 +52,13 @@ python scripts\bundle-python.py
 ```
 *Takes 1-2 minutes*
 
-### Step 3: Build!
+### Step 4: Build!
 ```bash
 npm run build
 ```
 *Takes 3-5 minutes*
 
-### Step 4: Find Your Installer
+### Step 5: Find Your Installer
 ```bash
 ls dist/
 ```
