@@ -1,7 +1,10 @@
 """
-Job Description Analysis Module.
+Job Description Analysis Module (DEPRECATED).
 
-Extracts skills, technologies, and requirements from JD text.
+This module was part of the original JD-based flow. The new flow uses
+Gemini AI for idea enhancement and PRD generation instead.
+
+Kept for backward compatibility. Use modules/gemini_client.py enhance_idea() instead.
 """
 
 import re
