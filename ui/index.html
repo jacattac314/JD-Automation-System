@@ -187,14 +187,38 @@ A project management tool for remote teams that integrates with Slack, supports 
                     </div>
                 </div>
 
-                <!-- PRD Preview Section (hidden initially) -->
-                <div id="prd-preview-section" class="card" style="display: none;">
+                <!-- PRD Review Section (hidden initially) — pauses pipeline for user approval -->
+                <div id="prd-review-section" class="card" style="display: none;">
                     <div class="card-header">
-                        <h2>📋 Generated PRD</h2>
-                        <button class="btn btn-secondary btn-sm" onclick="togglePrdPreview()">Toggle Preview</button>
+                        <h2>📋 Review PRD Before Building</h2>
                     </div>
                     <div class="card-body">
-                        <div id="prd-preview-content" class="prd-preview"></div>
+                        <!-- Enhanced Idea Summary -->
+                        <div id="enhanced-idea-summary" class="review-block"></div>
+
+                        <!-- PRD Preview (collapsible) -->
+                        <div class="review-block">
+                            <div class="review-block-header" onclick="togglePrdPreview()">
+                                <h3>Full PRD Document</h3>
+                                <button class="btn btn-secondary btn-sm">Toggle</button>
+                            </div>
+                            <div id="prd-preview-content" class="prd-preview" style="display: none;"></div>
+                        </div>
+
+                        <!-- Feature Checklist -->
+                        <div class="review-block">
+                            <h3>Features to Implement</h3>
+                            <p class="review-hint">Uncheck any features you want to exclude from implementation.</p>
+                            <div id="feature-checklist" class="feature-checklist"></div>
+                        </div>
+
+                        <!-- Review Actions -->
+                        <div class="form-actions" style="margin-top: 24px;">
+                            <button class="btn btn-secondary" onclick="cancelRun()">Cancel</button>
+                            <button class="btn btn-primary btn-lg" onclick="continueAfterReview()">
+                                Continue to Build
+                            </button>
+                        </div>
                     </div>
                 </div>
 

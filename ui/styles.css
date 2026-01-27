@@ -577,6 +577,130 @@ body {
     text-decoration: none;
 }
 
+/* PRD Review Section */
+.review-block {
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.review-block h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.review-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.review-block-header h3 {
+    margin: 0;
+}
+
+.review-hint {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.review-summary-grid {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px 16px;
+    font-size: 14px;
+}
+
+.review-summary-grid dt {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.review-summary-grid dd {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.prd-preview pre {
+    white-space: pre-wrap;
+    font-size: 0.85em;
+    max-height: 400px;
+    overflow-y: auto;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.feature-checklist {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.feature-checklist-epic {
+    margin-bottom: 12px;
+}
+
+.feature-checklist-epic-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent-primary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.feature-checklist-epic-header .priority-badge {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.feature-checkbox-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.feature-checkbox-item:hover {
+    background: var(--bg-hover);
+}
+
+.feature-checkbox-item input[type="checkbox"] {
+    margin-top: 3px;
+    accent-color: var(--accent-primary);
+}
+
+.feature-checkbox-item label {
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.feature-checkbox-item .complexity-badge {
+    display: inline-block;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 4px;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     .stats-grid {

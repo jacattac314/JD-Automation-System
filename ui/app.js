@@ -269,6 +269,85 @@ function togglePrdPreview() {
     content.style.display = content.style.display === 'none' ? 'block' : 'none';
 }
 
+// ============ PRD Review Rendering ============
+function renderReviewSection(enhancedIdea, prdResult) {
+    // Enhanced idea summary
+    const summaryEl = document.getElementById('enhanced-idea-summary');
+    const techStack = enhancedIdea.suggested_tech_stack || {};
+    const techParts = Object.entries(techStack)
+        .filter(([k]) => k !== 'notes')
+        .map(([layer, techs]) => `<dt>${layer.charAt(0).toUpperCase() + layer.slice(1)}</dt><dd>${Array.isArray(techs) ? techs.join(', ') : techs}</dd>`)
+        .join('');
+
+    summaryEl.innerHTML = `
+        <h3>Enhanced Application Concept</h3>
+        <dl class="review-summary-grid">
+            <dt>Title</dt><dd><strong>${escapeHtml(enhancedIdea.title)}</strong></dd>
+            <dt>Description</dt><dd>${escapeHtml((enhancedIdea.description || '').substring(0, 300))}${(enhancedIdea.description || '').length > 300 ? '...' : ''}</dd>
+            <dt>Target Users</dt><dd>${escapeHtml(enhancedIdea.target_users || 'N/A')}</dd>
+            <dt>Problem</dt><dd>${escapeHtml(enhancedIdea.problem_statement || 'N/A')}</dd>
+            ${techParts}
+        </dl>
+    `;
+
+    // PRD markdown preview
+    if (prdResult.prd_markdown) {
+        document.getElementById('prd-preview-content').innerHTML =
+            `<pre>${escapeHtml(prdResult.prd_markdown)}</pre>`;
+    }
+
+    // Feature checklist with checkboxes
+    const checklistEl = document.getElementById('feature-checklist');
+    let html = '';
+    let featureIndex = 0;
+    for (const epic of (prdResult.prd.epics || [])) {
+        html += `<div class="feature-checklist-epic">`;
+        html += `<div class="feature-checklist-epic-header">${escapeHtml(epic.name)} <span class="priority-badge">${epic.priority || 'P1'}</span></div>`;
+        for (const story of (epic.user_stories || [])) {
+            for (const feat of (story.features || [])) {
+                html += `
+                    <div class="feature-checkbox-item">
+                        <input type="checkbox" id="feat-${featureIndex}" data-feature-index="${featureIndex}" checked>
+                        <label for="feat-${featureIndex}">
+                            <strong>${escapeHtml(feat.name)}</strong> — ${escapeHtml(feat.description || '')}
+                            <span class="complexity-badge">${feat.complexity || 'M'}</span>
+                        </label>
+                    </div>
+                `;
+                featureIndex++;
+            }
+        }
+        html += `</div>`;
+    }
+    checklistEl.innerHTML = html;
+}
+
+function getSelectedFeatureIndices() {
+    const checkboxes = document.querySelectorAll('#feature-checklist input[type="checkbox"]');
+    const selected = [];
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            selected.push(parseInt(cb.dataset.featureIndex));
+        }
+    });
+    return selected;
+}
+
+function cancelRun() {
+    currentRun = null;
+    document.getElementById('progress-section').style.display = 'none';
+    document.getElementById('prd-review-section').style.display = 'none';
+    document.getElementById('results-section').style.display = 'none';
+    updateProgress(0);
+    document.getElementById('current-status').textContent = 'Ready to start...';
+    document.querySelectorAll('.progress-step').forEach(step => {
+        step.classList.remove('active', 'completed', 'error');
+        step.querySelector('.step-status').className = 'step-status pending';
+        step.querySelector('.step-status').textContent = 'Pending';
+    });
+    showToast('info', 'Cancelled', 'Build cancelled.');
+}
+
 // ============ Fallback: Build enhanced idea client-side ============
 function buildFallbackEnhancedIdea(appIdea, techPrefs) {
     const title = appIdea.trim().split('.')[0].split('\n')[0].substring(0, 80) || 'Application Project';
@@ -361,7 +440,7 @@ function countFeatures(prd) {
     return count;
 }
 
-// ============ Start Run ============
+// ============ Start Run (Phase 1: Enhance + PRD, then pause for review) ============
 async function startRun() {
     const appIdea = document.getElementById('idea-input').value.trim();
     const techPrefs = document.getElementById('tech-preferences').value.trim();
@@ -399,16 +478,18 @@ async function startRun() {
         localStorage.setItem('settings', JSON.stringify(settings));
     }
 
-    // Show progress
+    // Show progress, hide review/results
     document.getElementById('progress-section').style.display = 'block';
     document.getElementById('results-section').style.display = 'none';
-    document.getElementById('prd-preview-section').style.display = 'none';
+    document.getElementById('prd-review-section').style.display = 'none';
 
     const startTime = Date.now();
     currentRun = {
         id: `run_${startTime}`,
         timestamp: new Date().toLocaleString(),
-        status: 'running'
+        status: 'running',
+        startTime: startTime,
+        apiRunning: apiRunning
     };
 
     try {
@@ -478,13 +559,51 @@ async function startRun() {
         currentRun.featuresCount = countFeatures(prdResult.prd);
         updateProgress(33);
 
-        // Show PRD preview
-        if (prdResult.prd_markdown) {
-            document.getElementById('prd-preview-section').style.display = 'block';
-            document.getElementById('prd-preview-content').innerHTML =
-                `<pre style="white-space: pre-wrap; font-size: 0.85em; max-height: 400px; overflow-y: auto;">${escapeHtml(prdResult.prd_markdown)}</pre>`;
-        }
+        // ---- PAUSE: Show review section and wait for user to click Continue ----
+        document.getElementById('current-status').innerHTML =
+            '<span style="color: var(--warning);">⏸ Review the PRD below, then click <strong>Continue to Build</strong></span>';
 
+        document.getElementById('prd-review-section').style.display = 'block';
+        renderReviewSection(enhancedIdea, prdResult);
+
+        showToast('info', 'Review Required', 'Review the enhanced idea and PRD before continuing.', 8000);
+
+        // Pipeline pauses here — continueAfterReview() resumes steps 3-6
+
+    } catch (error) {
+        currentRun.status = 'failed';
+        currentRun.error = error.message;
+        showToast('error', 'Run Failed', error.message);
+        document.getElementById('current-status').innerHTML = `<span style="color: var(--error)">❌ Error: ${error.message}</span>`;
+        runHistory.push(currentRun);
+        localStorage.setItem('runHistory', JSON.stringify(runHistory));
+        updateDashboard();
+    }
+}
+
+// ============ Continue After Review (Phase 2: GitHub, implement, publish) ============
+async function continueAfterReview() {
+    if (!currentRun || !currentRun.enhancedIdea || !currentRun.prd) {
+        showToast('error', 'No Run', 'No active run to continue.');
+        return;
+    }
+
+    const enhancedIdea = currentRun.enhancedIdea;
+    const apiRunning = currentRun.apiRunning;
+
+    // Filter features based on user's checkbox selections
+    const selectedIndices = getSelectedFeatureIndices();
+    const allFeatures = flattenFeatures(currentRun.prd);
+    const selectedFeatures = allFeatures.filter((_, i) => selectedIndices.includes(i));
+
+    currentRun.featuresCount = selectedFeatures.length;
+    currentRun.selectedFeatures = selectedFeatures;
+
+    // Hide review section
+    document.getElementById('prd-review-section').style.display = 'none';
+    document.getElementById('current-status').textContent = 'Continuing build...';
+
+    try {
         // Step 3: Create GitHub repo
         updateStepStatus('step-github', 'active', 'Creating repository...');
         document.getElementById('current-status').textContent = 'Creating GitHub repository...';
@@ -515,14 +634,14 @@ async function startRun() {
         }
         updateProgress(50);
 
-        // Step 4: Break down features
+        // Step 4: Break down features (already done during review)
         updateStepStatus('step-features', 'active', 'Breaking down features...');
-        document.getElementById('current-status').textContent = 'Extracting implementation features from PRD...';
-        await sleep(800);
-        updateStepStatus('step-features', 'completed', `✓ ${currentRun.featuresCount} features across ${currentRun.epicsCount} epics`);
+        document.getElementById('current-status').textContent = `Building ${currentRun.featuresCount} selected features across ${currentRun.epicsCount} epics...`;
+        await sleep(500);
+        updateStepStatus('step-features', 'completed', `✓ ${currentRun.featuresCount} features selected`);
         updateProgress(66);
 
-        // Step 5: Implementation (simulated)
+        // Step 5: Implementation
         updateStepStatus('step-implement', 'active', 'Implementing...');
         document.getElementById('current-status').textContent = 'Claude Code is implementing features from the PRD...';
         await sleep(3000);
@@ -533,7 +652,6 @@ async function startRun() {
         updateStepStatus('step-publish', 'active', 'Publishing...');
         document.getElementById('current-status').textContent = 'Publishing to GitHub...';
 
-        // Push PRD and project files if repo was created
         if (currentRun.repoCreated && currentRun.repoFullName) {
             try {
                 const files = {
@@ -559,7 +677,7 @@ async function startRun() {
 
         // Complete
         currentRun.status = 'success';
-        currentRun.elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        currentRun.elapsedTime = ((Date.now() - currentRun.startTime) / 1000).toFixed(1);
 
         showToast('success', 'Build Complete!', `${currentRun.projectTitle} created in ${currentRun.elapsedTime}s`);
         showResults(currentRun);
@@ -575,6 +693,26 @@ async function startRun() {
     runHistory.push(currentRun);
     localStorage.setItem('runHistory', JSON.stringify(runHistory));
     updateDashboard();
+}
+
+// ============ Flatten PRD features into ordered list ============
+function flattenFeatures(prd) {
+    const features = [];
+    for (const epic of (prd.epics || [])) {
+        for (const story of (epic.user_stories || [])) {
+            for (const feat of (story.features || [])) {
+                features.push({
+                    epic: epic.name,
+                    epicPriority: epic.priority || 'P1',
+                    story: story.title,
+                    name: feat.name,
+                    description: feat.description || '',
+                    complexity: feat.complexity || 'M'
+                });
+            }
+        }
+    }
+    return features;
 }
 
 // ============ UI Helpers ============
@@ -634,7 +772,7 @@ function resetRun() {
     document.getElementById('tech-preferences').value = '';
     document.getElementById('progress-section').style.display = 'none';
     document.getElementById('results-section').style.display = 'none';
-    document.getElementById('prd-preview-section').style.display = 'none';
+    document.getElementById('prd-review-section').style.display = 'none';
 
     document.querySelectorAll('.progress-step').forEach(step => {
         step.classList.remove('active', 'completed', 'error');
