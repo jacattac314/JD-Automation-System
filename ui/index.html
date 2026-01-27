@@ -25,7 +25,7 @@
                 </a>
                 <a href="#" class="nav-item" data-view="new-run">
                     <span class="nav-icon">🚀</span>
-                    New Run
+                    Build App
                 </a>
                 <a href="#" class="nav-item" data-view="history">
                     <span class="nav-icon">📜</span>
@@ -51,11 +51,11 @@
             <header class="header">
                 <div class="header-title">
                     <h1>Dashboard</h1>
-                    <p class="subtitle">Transform job descriptions into projects</p>
+                    <p class="subtitle">Transform app ideas into fully built projects</p>
                 </div>
                 <div class="header-actions">
                     <button class="btn btn-primary" onclick="showView('new-run')">
-                        <span>+</span> New Run
+                        <span>+</span> Build App
                     </button>
                 </div>
             </header>
@@ -87,8 +87,8 @@
                     <div class="stat-card">
                         <div class="stat-icon">🔧</div>
                         <div class="stat-info">
-                            <span class="stat-value" id="skills-extracted">0</span>
-                            <span class="stat-label">Skills Extracted</span>
+                            <span class="stat-value" id="total-features">0</span>
+                            <span class="stat-label">Features Built</span>
                         </div>
                     </div>
                 </div>
@@ -101,8 +101,8 @@
                         <div id="recent-runs" class="runs-list">
                             <div class="empty-state">
                                 <span class="empty-icon">📭</span>
-                                <p>No runs yet. Start your first automation!</p>
-                                <button class="btn btn-primary" onclick="showView('new-run')">Create New Run</button>
+                                <p>No runs yet. Start by building your first app!</p>
+                                <button class="btn btn-primary" onclick="showView('new-run')">Build App</button>
                             </div>
                         </div>
                     </div>
@@ -113,40 +113,26 @@
             <div id="new-run-view" class="view">
                 <div class="card">
                     <div class="card-header">
-                        <h2>🚀 New Automation Run</h2>
+                        <h2>🚀 Build a New Application</h2>
                     </div>
                     <div class="card-body">
                         <div class="form-group">
-                            <label for="jd-input">Job Description</label>
-                            <textarea id="jd-input" rows="10" placeholder="Paste your job description here...
+                            <label for="idea-input">Application Idea</label>
+                            <textarea id="idea-input" rows="8" placeholder="Describe your application idea — what it does, who it's for, and what problem it solves...
 
 Example:
-Senior Full-Stack Developer
-- 5+ years in Python and JavaScript
-- React and Node.js expertise
-- PostgreSQL database experience
-- AWS cloud knowledge"></textarea>
+A project management tool for remote teams that integrates with Slack, supports Kanban boards, time tracking, and automated daily standups via AI summarization."></textarea>
                         </div>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="auto-confirm" checked>
-                                    Auto-confirm project ideas
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="skip-linkedin">
-                                    Skip LinkedIn integration
-                                </label>
-                            </div>
+                        <div class="form-group">
+                            <label for="tech-preferences">Technology Preferences (optional)</label>
+                            <input type="text" id="tech-preferences" placeholder="e.g., React, Python, PostgreSQL, Docker...">
                         </div>
 
                         <div class="form-actions">
-                            <button class="btn btn-secondary" onclick="loadSampleJD()">Load Sample JD</button>
+                            <button class="btn btn-secondary" onclick="loadSampleIdea()">Load Sample Idea</button>
                             <button class="btn btn-primary btn-lg" onclick="startRun()">
-                                🚀 Start Automation
+                                🚀 Build My App
                             </button>
                         </div>
                     </div>
@@ -159,14 +145,14 @@ Senior Full-Stack Developer
                     </div>
                     <div class="card-body">
                         <div class="progress-steps">
-                            <div class="progress-step" id="step-analysis">
-                                <span class="step-icon">🔍</span>
-                                <span class="step-label">Extracting Skills</span>
+                            <div class="progress-step" id="step-enhance">
+                                <span class="step-icon">✨</span>
+                                <span class="step-label">Enhancing App Idea (AI)</span>
                                 <span class="step-status pending">Pending</span>
                             </div>
-                            <div class="progress-step" id="step-ideation">
-                                <span class="step-icon">💡</span>
-                                <span class="step-label">Generating Project Idea</span>
+                            <div class="progress-step" id="step-prd">
+                                <span class="step-icon">📋</span>
+                                <span class="step-label">Generating PRD &amp; Epics</span>
                                 <span class="step-status pending">Pending</span>
                             </div>
                             <div class="progress-step" id="step-github">
@@ -174,14 +160,14 @@ Senior Full-Stack Developer
                                 <span class="step-label">Creating GitHub Repo</span>
                                 <span class="step-status pending">Pending</span>
                             </div>
-                            <div class="progress-step" id="step-spec">
-                                <span class="step-icon">📝</span>
-                                <span class="step-label">Generating Specification</span>
+                            <div class="progress-step" id="step-features">
+                                <span class="step-icon">🔍</span>
+                                <span class="step-label">Breaking Down Features</span>
                                 <span class="step-status pending">Pending</span>
                             </div>
                             <div class="progress-step" id="step-implement">
                                 <span class="step-icon">🤖</span>
-                                <span class="step-label">AI Implementation</span>
+                                <span class="step-label">Implementing Features (Claude Code)</span>
                                 <span class="step-status pending">Pending</span>
                             </div>
                             <div class="progress-step" id="step-publish">
@@ -198,6 +184,17 @@ Senior Full-Stack Developer
                         <div id="current-status" class="current-status">
                             Ready to start...
                         </div>
+                    </div>
+                </div>
+
+                <!-- PRD Preview Section (hidden initially) -->
+                <div id="prd-preview-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>📋 Generated PRD</h2>
+                        <button class="btn btn-secondary btn-sm" onclick="togglePrdPreview()">Toggle Preview</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="prd-preview-content" class="prd-preview"></div>
                     </div>
                 </div>
 
@@ -263,12 +260,6 @@ Senior Full-Stack Developer
                                 <label>
                                     <input type="checkbox" id="private-repos" checked>
                                     Create private repositories by default
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="enable-linkedin">
-                                    Enable LinkedIn integration
                                 </label>
                             </div>
                         </div>

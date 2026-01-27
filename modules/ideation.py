@@ -1,7 +1,10 @@
 """
-Project Ideation Module.
+Project Ideation Module (DEPRECATED).
 
-Generates project ideas based on JD requirements.
+This module was part of the original JD-based flow that used hardcoded templates.
+The new flow uses the user's own application idea enhanced by Gemini AI.
+
+Kept for backward compatibility. Use modules/gemini_client.py enhance_idea() instead.
 """
 
 import random
