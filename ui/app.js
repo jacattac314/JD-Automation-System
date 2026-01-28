@@ -1,8 +1,303 @@
 // JD Automation System - Frontend Application
-// New flow: App Idea -> AI Enhancement -> PRD Generation -> GitHub -> Implementation -> Publish
+// Flow: App Idea -> AI Enhancement -> PRD Generation -> GitHub -> Implementation -> Publish
 
 // API Configuration
 const API_BASE_URL = 'http://127.0.0.1:8000';
+
+// ============ Auth State ============
+let authToken = localStorage.getItem('authToken') || null;
+let currentUser = null;
+
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return headers;
+}
+
+async function checkAuth() {
+    if (!authToken) {
+        showAuthUI(false);
+        return false;
+    }
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+            headers: getAuthHeaders()
+        });
+        if (response.ok) {
+            currentUser = await response.json();
+            showAuthUI(true);
+            return true;
+        }
+        // Token expired or invalid
+        authToken = null;
+        localStorage.removeItem('authToken');
+        showAuthUI(false);
+        return false;
+    } catch (e) {
+        // API not running — show settings-based mode
+        showAuthUI(false);
+        return false;
+    }
+}
+
+function showAuthUI(isAuthenticated) {
+    const authArea = document.getElementById('auth-area');
+    if (!authArea) return;
+
+    if (isAuthenticated && currentUser) {
+        authArea.innerHTML = `
+            <div class="user-profile">
+                <img src="${currentUser.avatar_url || ''}" alt="" class="user-avatar" onerror="this.style.display='none'">
+                <span class="user-name">${currentUser.username}</span>
+                <button class="btn btn-sm" onclick="logout()">Logout</button>
+            </div>
+        `;
+    } else {
+        authArea.innerHTML = `
+            <button class="btn btn-primary btn-sm" onclick="loginWithGitHub()">Sign in with GitHub</button>
+        `;
+    }
+}
+
+async function loginWithGitHub() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/github`);
+        if (response.ok) {
+            const data = await response.json();
+            window.location.href = data.authorize_url;
+        } else {
+            showToast('warning', 'Auth Not Configured', 'GitHub OAuth not configured. Use API keys in Settings.');
+        }
+    } catch (e) {
+        showToast('warning', 'API Offline', 'Cannot connect to API server for authentication.');
+    }
+}
+
+function logout() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('authToken');
+    showAuthUI(false);
+    showToast('info', 'Logged Out', 'You have been logged out.');
+}
+
+// Handle OAuth callback (check URL for auth token)
+function handleAuthCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+        // Exchange code via the callback endpoint
+        fetch(`${API_BASE_URL}/api/auth/callback?code=${code}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.token) {
+                    authToken = data.token;
+                    currentUser = data.user;
+                    localStorage.setItem('authToken', authToken);
+                    showAuthUI(true);
+                    showToast('success', 'Signed In', `Welcome, ${data.user.username}!`);
+                    // Clean URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            })
+            .catch(e => console.error('Auth callback error:', e));
+    }
+}
+
+// ============ SSE-Based Pipeline Run ============
+async function startRunWithSSE() {
+    const appIdea = document.getElementById('idea-input').value.trim();
+    const techPrefs = document.getElementById('tech-preferences').value.trim();
+
+    if (!appIdea) {
+        showToast('warning', 'Missing Input', 'Please describe your application idea');
+        return;
+    }
+
+    if (appIdea.length < 20) {
+        showToast('warning', 'Too Short', 'Please provide a more detailed description (at least 20 characters)');
+        return;
+    }
+
+    // Need either auth token or manual API keys
+    const hasAuth = !!authToken;
+    const hasKeys = settings.geminiKey && settings.githubToken;
+
+    if (!hasAuth && !hasKeys) {
+        showToast('error', 'Authentication Required',
+            'Please sign in with GitHub or configure API keys in Settings.');
+        return;
+    }
+
+    // Show progress
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('results-section').style.display = 'none';
+    document.getElementById('prd-preview-section').style.display = 'none';
+
+    const startTime = Date.now();
+    currentRun = {
+        id: `run_${startTime}`,
+        timestamp: new Date().toLocaleString(),
+        status: 'running'
+    };
+
+    try {
+        // Start the pipeline via API
+        const response = await fetch(`${API_BASE_URL}/api/run`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                gemini_key: settings.geminiKey || '',
+                github_token: settings.githubToken || '',
+                github_username: settings.githubUsername || '',
+                app_idea: appIdea,
+                tech_preferences: techPrefs || null,
+                private: settings.privateRepos !== false
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to start pipeline');
+        }
+
+        const { run_id } = await response.json();
+        currentRun.id = run_id;
+
+        // Connect to SSE stream for real-time updates
+        document.getElementById('current-status').textContent = 'Pipeline started — streaming progress...';
+        const eventSource = new EventSource(`${API_BASE_URL}/api/run/${run_id}/stream`);
+
+        const stepMapping = {
+            'enhance_idea': 'step-enhance',
+            'generate_prd': 'step-prd',
+            'create_repo': 'step-github',
+            'extract_features': 'step-features',
+            'implement': 'step-implement',
+            'publish': 'step-publish'
+        };
+
+        const stepProgress = {
+            'enhance_idea': 16,
+            'generate_prd': 33,
+            'create_repo': 50,
+            'extract_features': 66,
+            'implement': 83,
+            'publish': 95,
+            'pipeline': 100
+        };
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                const step = data.step;
+                const status = data.status;
+                const detail = data.detail || '';
+
+                // Update step UI
+                const stepId = stepMapping[step];
+                if (stepId) {
+                    if (status === 'in_progress') {
+                        updateStepStatus(stepId, 'active', detail);
+                    } else if (status === 'completed') {
+                        updateStepStatus(stepId, 'completed', `✓ ${detail}`);
+                    } else if (status === 'failed') {
+                        updateStepStatus(stepId, 'error', `✗ ${detail}`);
+                    }
+                }
+
+                // Update progress bar
+                const progress = stepProgress[step];
+                if (progress) {
+                    updateProgress(status === 'completed' ? progress : Math.max(progress - 10, 0));
+                }
+
+                // Update status text
+                document.getElementById('current-status').textContent = detail;
+
+                // Show PRD preview when available
+                if (step === 'generate_prd' && status === 'completed' && data.data?.prd_markdown) {
+                    document.getElementById('prd-preview-section').style.display = 'block';
+                    document.getElementById('prd-preview-content').innerHTML =
+                        `<pre style="white-space: pre-wrap; font-size: 0.85em; max-height: 400px; overflow-y: auto;">${escapeHtml(data.data.prd_markdown)}</pre>`;
+                }
+
+                // Update run data from events
+                if (data.data?.epics_count) currentRun.epicsCount = data.data.epics_count;
+                if (data.data?.features_count) currentRun.featuresCount = data.data.features_count;
+                if (data.data?.name) currentRun.repoUrl = data.data.url;
+
+                // Pipeline finished
+                if (step === 'pipeline') {
+                    eventSource.close();
+
+                    if (status === 'completed') {
+                        currentRun.status = 'success';
+                        currentRun.elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                        // Fetch final run data
+                        fetch(`${API_BASE_URL}/api/run/${run_id}`)
+                            .then(r => r.json())
+                            .then(runData => {
+                                if (runData.result) {
+                                    currentRun.projectTitle = runData.result.project_title || currentRun.projectTitle;
+                                    currentRun.repoUrl = runData.result.repo_url || currentRun.repoUrl;
+                                    currentRun.epicsCount = runData.result.epics_count || currentRun.epicsCount;
+                                    currentRun.featuresCount = runData.result.features_count || currentRun.featuresCount;
+                                }
+                                showResults(currentRun);
+                                showToast('success', 'Build Complete!',
+                                    `${currentRun.projectTitle || 'Project'} created in ${currentRun.elapsedTime}s`);
+                            })
+                            .catch(() => showResults(currentRun));
+                    } else {
+                        currentRun.status = 'failed';
+                        currentRun.error = detail;
+                        showToast('error', 'Pipeline Failed', detail);
+                        document.getElementById('current-status').innerHTML =
+                            `<span style="color: var(--error)">Pipeline failed: ${escapeHtml(detail)}</span>`;
+                    }
+
+                    // Save to history
+                    runHistory.push(currentRun);
+                    localStorage.setItem('runHistory', JSON.stringify(runHistory));
+                    updateDashboard();
+                }
+            } catch (e) {
+                console.error('SSE parse error:', e);
+            }
+        };
+
+        eventSource.onerror = () => {
+            eventSource.close();
+            // If we haven't gotten a completion event, check the run status
+            fetch(`${API_BASE_URL}/api/run/${run_id}`)
+                .then(r => r.json())
+                .then(runData => {
+                    if (runData.status === 'completed' || runData.status === 'failed') {
+                        // Already handled
+                    } else {
+                        document.getElementById('current-status').textContent =
+                            'Connection lost — check run status in History';
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('current-status').textContent =
+                        'Connection lost — pipeline may still be running on the server';
+                });
+        };
+
+    } catch (error) {
+        // Fall back to the original step-by-step method
+        console.warn('SSE pipeline failed, falling back to step-by-step mode:', error.message);
+        await startRunLegacy();
+    }
+}
+
+// Rename old startRun to startRunLegacy as fallback
+async function startRunLegacy() {
 
 // ============ Toast Notification System ============
 function initToasts() {
@@ -181,9 +476,11 @@ function migrateHistoryUrls(newUsername) {
 
 // ============ Initialize ============
 document.addEventListener('DOMContentLoaded', () => {
+    handleAuthCallback();
     loadSettings();
     updateDashboard();
     setupNavigation();
+    checkAuth();
 });
 
 // ============ Navigation ============
@@ -361,8 +658,10 @@ function countFeatures(prd) {
     return count;
 }
 
-// ============ Start Run ============
-async function startRun() {
+// ============ Start Run (main entry point — delegates to SSE pipeline) ============
+function startRun() {
+    return startRunWithSSE();
+}
     const appIdea = document.getElementById('idea-input').value.trim();
     const techPrefs = document.getElementById('tech-preferences').value.trim();
 

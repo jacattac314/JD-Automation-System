@@ -46,7 +46,7 @@ def check_python_version():
 def check_dependencies():
     """Check required dependencies."""
     print(f"{Colors.CYAN}[2/5]{Colors.END} Checking dependencies...", end=" ")
-    required = ['fastapi', 'uvicorn', 'PyGithub']
+    required = ['fastapi', 'uvicorn', 'PyGithub', 'google-generativeai']
     missing = []
     
     for pkg in required:

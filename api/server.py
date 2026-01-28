@@ -1,45 +1,60 @@
 """
 FastAPI server for JD Automation System.
 
-Exposes idea enhancement, PRD generation, GitHub, and other services to the web UI.
+Exposes idea enhancement, PRD generation, GitHub, pipeline execution,
+and real-time progress streaming to the web UI.
 """
 
-import os
 import sys
 import json
+import asyncio
+import uuid
 from pathlib import Path
 from datetime import datetime
+from threading import Thread
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import Optional, List
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, validator
+from typing import Optional, List, Dict, Any
 import uvicorn
 
 from github import Github, GithubException
-
-# Optional: Gemini import
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
+from modules.gemini_client import GeminiClient
+from core.settings import settings
+from core.database import init_db, get_db, get_or_create_user, save_run, get_user_runs, Run as RunModel
+from core.auth import (
+    get_github_authorize_url, exchange_code_for_token, get_github_user,
+    create_jwt, encrypt_token, decrypt_token,
+    require_auth, optional_auth
+)
 
 app = FastAPI(title="JD Automation API", version="2.0.0")
 
-# Enable CORS for frontend
+# ============ In-Memory Run State (for SSE streaming) ============
+
+_active_runs: Dict[str, Dict[str, Any]] = {}
+_run_events: Dict[str, asyncio.Queue] = {}
+
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def startup_event():
+    """Initialize database on server startup."""
+    init_db()
 
 # Serve static UI files
 UI_DIR = Path(__file__).parent.parent / "ui"
@@ -82,6 +97,24 @@ class PushFilesRequest(BaseModel):
     commit_message: str = "Initial commit from JD Automation"
 
 
+class StartRunRequest(BaseModel):
+    gemini_key: str
+    github_token: str
+    github_username: str
+    app_idea: str
+    tech_preferences: Optional[str] = None
+    private: bool = True
+
+    @validator('app_idea')
+    def validate_app_idea(cls, v):
+        v = v.strip()
+        if len(v) < 20:
+            raise ValueError('App idea must be at least 20 characters')
+        if len(v) > 5000:
+            raise ValueError('App idea must be at most 5000 characters')
+        return v
+
+
 class EnhanceIdeaRequest(BaseModel):
     gemini_key: str
     app_idea: str
@@ -122,9 +155,106 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "ok",
-        "gemini_available": GEMINI_AVAILABLE,
+        "gemini_available": True,
+        "auth_configured": bool(settings.github_client_id),
         "timestamp": datetime.now().isoformat()
     }
+
+
+# ============ Authentication Endpoints ============
+
+@app.get("/api/auth/github")
+async def auth_github_redirect(redirect_uri: str = "http://127.0.0.1:8000/api/auth/callback"):
+    """Get the GitHub OAuth authorization URL."""
+    url = get_github_authorize_url(redirect_uri)
+    return {"authorize_url": url}
+
+
+@app.get("/api/auth/callback")
+async def auth_github_callback(code: str):
+    """Handle GitHub OAuth callback — exchange code for token and create session."""
+    # Exchange authorization code for GitHub access token
+    github_token = exchange_code_for_token(code)
+
+    # Fetch user profile from GitHub
+    github_user = get_github_user(github_token)
+
+    # Create or update user in database
+    db = get_db()
+    try:
+        user = get_or_create_user(
+            db=db,
+            github_id=github_user["id"],
+            github_username=github_user["login"],
+            avatar_url=github_user.get("avatar_url"),
+            email=github_user.get("email"),
+        )
+
+        # Encrypt and store GitHub token
+        user.github_token_encrypted = encrypt_token(github_token)
+        db.commit()
+
+        # Issue JWT
+        jwt_token = create_jwt(user.id, user.github_username)
+
+        return {
+            "token": jwt_token,
+            "user": {
+                "id": user.id,
+                "username": user.github_username,
+                "avatar_url": user.github_avatar_url,
+                "email": user.email,
+            }
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/auth/me")
+async def get_current_user(token_data: dict = Depends(require_auth)):
+    """Get the currently authenticated user's profile."""
+    db = get_db()
+    try:
+        from core.database import User
+        user = db.query(User).filter(User.id == int(token_data["sub"])).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {
+            "id": user.id,
+            "username": user.github_username,
+            "avatar_url": user.github_avatar_url,
+            "email": user.email,
+            "created_at": user.created_at.isoformat(),
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/runs")
+async def list_runs(token_data: dict = Depends(require_auth), limit: int = 50, offset: int = 0):
+    """Get the authenticated user's run history from the database."""
+    db = get_db()
+    try:
+        runs = get_user_runs(db, user_id=int(token_data["sub"]), limit=limit, offset=offset)
+        return {
+            "runs": [
+                {
+                    "run_id": r.run_id,
+                    "status": r.status,
+                    "project_title": r.project_title,
+                    "app_idea": r.app_idea[:200] if r.app_idea else None,
+                    "repo_url": r.repo_url,
+                    "epics_count": r.epics_count,
+                    "features_count": r.features_count,
+                    "features_completed": r.features_completed,
+                    "elapsed_time": r.elapsed_time,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in runs
+            ]
+        }
+    finally:
+        db.close()
 
 
 @app.post("/api/validate-token", response_model=ValidateTokenResponse)
@@ -221,30 +351,11 @@ async def push_files(request: PushFilesRequest):
 @app.post("/api/enhance-idea", response_model=EnhanceIdeaResponse)
 async def enhance_idea(request: EnhanceIdeaRequest):
     """Enhance a raw application idea using Gemini AI."""
-    if not GEMINI_AVAILABLE:
-        return EnhanceIdeaResponse(
-            success=False,
-            message="Gemini library not installed. Run: pip install google-generativeai"
-        )
-
     try:
-        genai.configure(api_key=request.gemini_key)
-        model = genai.GenerativeModel('gemini-pro')
-
-        prompt = build_enhance_idea_prompt(request.app_idea, request.tech_preferences)
-        response = model.generate_content(prompt)
-        text = response.text
-
-        enhanced = parse_json_response(text)
-        if enhanced and "title" in enhanced:
-            return EnhanceIdeaResponse(success=True, enhanced_idea=enhanced)
-
-        # Fallback: build structured response from raw text
-        return EnhanceIdeaResponse(
-            success=True,
-            enhanced_idea=build_fallback_enhanced_idea(request.app_idea, request.tech_preferences)
-        )
-
+        # Client handles fallback if key is invalid or API fails
+        client = GeminiClient(api_key=request.gemini_key)
+        enhanced = client.enhance_idea(request.app_idea, request.tech_preferences)
+        return EnhanceIdeaResponse(success=True, enhanced_idea=enhanced)
     except Exception as e:
         return EnhanceIdeaResponse(success=False, message=str(e))
 
@@ -252,32 +363,241 @@ async def enhance_idea(request: EnhanceIdeaRequest):
 @app.post("/api/generate-prd", response_model=GeneratePRDResponse)
 async def generate_prd(request: GeneratePRDRequest):
     """Generate a comprehensive PRD with epics, user stories, and features."""
-    if not GEMINI_AVAILABLE:
-        return GeneratePRDResponse(
-            success=False,
-            message="Gemini library not installed. Run: pip install google-generativeai"
-        )
-
     try:
-        genai.configure(api_key=request.gemini_key)
-        model = genai.GenerativeModel('gemini-pro')
-
-        prompt = build_prd_prompt(request.enhanced_idea)
-        response = model.generate_content(prompt)
-        text = response.text
-
-        prd_data = parse_json_response(text)
-        if prd_data and "epics" in prd_data:
-            prd_markdown = prd_to_markdown(prd_data, request.enhanced_idea)
-            return GeneratePRDResponse(success=True, prd=prd_data, prd_markdown=prd_markdown)
-
-        # Fallback
-        prd_data = build_fallback_prd(request.enhanced_idea)
-        prd_markdown = text if len(text) > 200 else prd_to_markdown(prd_data, request.enhanced_idea)
-        return GeneratePRDResponse(success=True, prd=prd_data, prd_markdown=prd_markdown)
-
+        client = GeminiClient(api_key=request.gemini_key)
+        result = client.generate_prd(request.enhanced_idea)
+        return GeneratePRDResponse(
+            success=True, 
+            prd=result.get("prd"), 
+            prd_markdown=result.get("prd_markdown")
+        )
     except Exception as e:
         return GeneratePRDResponse(success=False, message=str(e))
+
+
+# ============ Pipeline Run Endpoints ============
+
+@app.post("/api/run")
+async def start_run(request: StartRunRequest):
+    """Start a full pipeline run (idea -> PRD -> repo -> implementation -> publish).
+
+    Returns a run_id that can be used to stream progress via /api/run/{run_id}/stream.
+    """
+    run_id = f"run_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
+
+    # Initialize run state
+    _active_runs[run_id] = {
+        "status": "starting",
+        "started_at": datetime.now().isoformat(),
+        "app_idea": request.app_idea,
+        "steps": {},
+        "result": None,
+        "error": None,
+    }
+    _run_events[run_id] = asyncio.Queue()
+
+    # Run the pipeline in a background thread
+    thread = Thread(
+        target=_execute_pipeline,
+        args=(run_id, request),
+        daemon=True
+    )
+    thread.start()
+
+    return {"run_id": run_id, "status": "started"}
+
+
+@app.get("/api/run/{run_id}/stream")
+async def stream_run_progress(run_id: str):
+    """Stream real-time progress for a pipeline run using Server-Sent Events (SSE)."""
+    if run_id not in _active_runs:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    async def event_generator():
+        queue = _run_events.get(run_id)
+        if not queue:
+            return
+
+        # Send current state immediately
+        yield f"data: {json.dumps(_active_runs[run_id], default=str)}\n\n"
+
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+
+                # Stop streaming when pipeline finishes
+                if event.get("status") in ("completed", "failed"):
+                    break
+            except asyncio.TimeoutError:
+                # Send keepalive
+                yield f": keepalive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@app.get("/api/run/{run_id}")
+async def get_run_status(run_id: str):
+    """Get current status of a pipeline run."""
+    if run_id not in _active_runs:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return _active_runs[run_id]
+
+
+def _execute_pipeline(run_id: str, request: StartRunRequest):
+    """Execute the full pipeline in a background thread."""
+    from modules.gemini_client import GeminiClient
+    from modules.antigravity_runner import AntigravityRunner
+    from modules.artifact_manager import ArtifactManager
+    from core.config import config
+    import time
+
+    run_state = _active_runs[run_id]
+    event_queue = _run_events[run_id]
+
+    def emit(step: str, status: str, detail: str = "", data: Any = None):
+        run_state["status"] = status
+        run_state["steps"][step] = {"status": status, "detail": detail}
+        if data:
+            run_state["steps"][step]["data"] = data
+        event = {"run_id": run_id, "step": step, "status": status,
+                 "detail": detail, "timestamp": datetime.now().isoformat()}
+        if data:
+            event["data"] = data
+        # Put event on queue for SSE consumers
+        try:
+            event_queue.put_nowait(event)
+        except Exception:
+            pass
+
+    try:
+        # Step 1: Enhance idea
+        emit("enhance_idea", "in_progress", "Enhancing application idea with AI...")
+        gemini = GeminiClient(api_key=request.gemini_key)
+        enhanced_idea = gemini.enhance_idea(request.app_idea, request.tech_preferences)
+        emit("enhance_idea", "completed", f"Enhanced: {enhanced_idea.get('title', 'Untitled')}")
+        run_state["enhanced_idea"] = enhanced_idea
+
+        # Step 2: Generate PRD
+        emit("generate_prd", "in_progress", "Generating PRD with epics and user stories...")
+        prd_result = gemini.generate_prd(enhanced_idea)
+        prd_data = prd_result["prd"]
+        prd_markdown = prd_result["prd_markdown"]
+        epics_count = len(prd_data.get("epics", []))
+        emit("generate_prd", "completed", f"PRD generated with {epics_count} epics",
+             data={"epics_count": epics_count, "prd_markdown": prd_markdown[:2000]})
+        run_state["prd"] = prd_data
+
+        # Step 3: Create GitHub repo
+        emit("create_repo", "in_progress", "Creating GitHub repository...")
+        try:
+            client = Github(request.github_token)
+            user = client.get_user()
+            repo_name = sanitize_repo_name(enhanced_idea.get("title", "project"))
+            base_name = repo_name
+            counter = 1
+            while repo_exists(user, repo_name):
+                repo_name = f"{base_name}-{counter}"
+                counter += 1
+            repo = user.create_repo(
+                name=repo_name,
+                description=enhanced_idea.get("description", "")[:200],
+                private=request.private,
+                auto_init=True
+            )
+            repo_info = {"name": repo_name, "url": repo.html_url,
+                         "clone_url": repo.clone_url, "full_name": repo.full_name}
+            emit("create_repo", "completed", f"Created: {repo.html_url}", data=repo_info)
+        except Exception as e:
+            emit("create_repo", "failed", f"GitHub repo creation failed: {e}")
+            repo_info = {"name": sanitize_repo_name(enhanced_idea.get("title", "project")),
+                         "url": None, "clone_url": None, "full_name": None}
+
+        run_state["repo"] = repo_info
+
+        # Step 4: Extract features
+        emit("extract_features", "in_progress", "Breaking down features from PRD...")
+        from core.orchestrator import Orchestrator
+        orch = Orchestrator()
+        features = orch._extract_features(prd_data)
+        emit("extract_features", "completed", f"Extracted {len(features)} features",
+             data={"features_count": len(features)})
+
+        # Step 5: Create local project and run implementation
+        emit("implement", "in_progress", "Implementing features with Claude Code...")
+        local_path = config.project_storage / repo_info["name"]
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        # Create initial files
+        orch._create_initial_files(local_path, enhanced_idea, prd_data, prd_markdown)
+
+        # Run implementation with progress callback
+        runner = AntigravityRunner()
+
+        def on_impl_progress(progress_data):
+            emit("implement", "in_progress",
+                 f"Feature {progress_data.get('current_feature_index', 0)}/{progress_data.get('total_features', 0)}: "
+                 f"{progress_data.get('current_feature_name', '')}",
+                 data=progress_data)
+
+        prd_path = local_path / "docs" / "PRD.md"
+        impl_result = runner.run_implementation(
+            project_path=local_path,
+            prd_path=prd_path,
+            features=features,
+            progress_callback=on_impl_progress
+        )
+        impl_status = "completed" if impl_result.get("status") == "completed" else "failed"
+        emit("implement", impl_status,
+             f"Implementation {impl_status}: {len(impl_result.get('features_completed', []))} features done",
+             data={"mode": impl_result.get("mode", "unknown"),
+                   "features_completed": impl_result.get("features_completed", []),
+                   "features_failed": impl_result.get("features_failed", [])})
+
+        # Step 6: Push to GitHub
+        if repo_info.get("full_name"):
+            emit("publish", "in_progress", "Publishing to GitHub...")
+            try:
+                gh_repo = client.get_repo(repo_info["full_name"])
+                # Push PRD and project.json at minimum
+                files_to_push = {
+                    "docs/PRD.md": prd_markdown,
+                    "project.json": json.dumps(run_state.get("enhanced_idea", {}), indent=2)
+                }
+                for file_path, content in files_to_push.items():
+                    try:
+                        existing = gh_repo.get_contents(file_path)
+                        gh_repo.update_file(file_path, f"Update {file_path}", content, existing.sha)
+                    except Exception:
+                        gh_repo.create_file(file_path, f"Add {file_path}", content)
+                emit("publish", "completed", f"Published to {repo_info['url']}")
+            except Exception as e:
+                emit("publish", "failed", f"Publish failed: {e}")
+        else:
+            emit("publish", "skipped", "No GitHub repo — skipping publish")
+
+        # Final result
+        run_state["result"] = {
+            "project_title": enhanced_idea.get("title"),
+            "repo_url": repo_info.get("url"),
+            "epics_count": epics_count,
+            "features_count": len(features),
+            "features_completed": len(impl_result.get("features_completed", [])),
+            "mode": impl_result.get("mode", "unknown"),
+        }
+        emit("pipeline", "completed", "Pipeline finished successfully")
+
+    except Exception as e:
+        run_state["error"] = str(e)
+        emit("pipeline", "failed", f"Pipeline error: {e}")
 
 
 # ============ Helper Functions ============
@@ -300,265 +620,6 @@ def repo_exists(user, repo_name: str) -> bool:
         return True
     except GithubException:
         return False
-
-
-def parse_json_response(text: str) -> Optional[dict]:
-    """Try to extract and parse JSON from a Gemini response."""
-    import re
-    try:
-        return json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    json_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)\n?```', text)
-    if json_match:
-        try:
-            return json.loads(json_match.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    brace_start = text.find('{')
-    brace_end = text.rfind('}')
-    if brace_start != -1 and brace_end != -1:
-        try:
-            return json.loads(text[brace_start:brace_end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    return None
-
-
-def build_enhance_idea_prompt(app_idea: str, tech_preferences: Optional[str] = None) -> str:
-    """Build prompt for idea enhancement."""
-    tech_section = ""
-    if tech_preferences:
-        tech_section = f"\nThe user prefers these technologies: {tech_preferences}\nIncorporate them where appropriate.\n"
-
-    return f"""You are a senior product strategist. Enhance this rough application idea into a clear product concept.
-
-**User's idea:**
-{app_idea}
-{tech_section}
-
-**Return ONLY valid JSON** with this structure:
-{{
-  "title": "Concise project name",
-  "description": "2-3 paragraph detailed description",
-  "target_users": "Primary user personas",
-  "problem_statement": "The specific problem this solves",
-  "key_value_props": ["Prop 1", "Prop 2", "Prop 3"],
-  "suggested_tech_stack": {{
-    "frontend": ["tech1"],
-    "backend": ["tech1"],
-    "database": ["tech1"],
-    "infrastructure": ["tech1"]
-  }}
-}}
-
-Be specific and practical."""
-
-
-def build_prd_prompt(enhanced_idea: dict) -> str:
-    """Build prompt for PRD generation."""
-    return f"""You are a senior product manager creating a comprehensive PRD.
-
-**Application:**
-Title: {enhanced_idea.get('title', 'Untitled')}
-Description: {enhanced_idea.get('description', '')}
-Target Users: {enhanced_idea.get('target_users', '')}
-Problem: {enhanced_idea.get('problem_statement', '')}
-Tech Stack: {json.dumps(enhanced_idea.get('suggested_tech_stack', {{}}))}
-
-**Return ONLY valid JSON** with this structure:
-{{
-  "product_overview": {{
-    "vision": "Vision statement",
-    "goals": ["Goal 1", "Goal 2"],
-    "success_metrics": ["Metric 1"]
-  }},
-  "epics": [
-    {{
-      "name": "Epic Name",
-      "description": "Epic description",
-      "priority": "P0",
-      "user_stories": [
-        {{
-          "title": "Story Title",
-          "story": "As a [user], I want [feature] so that [benefit]",
-          "acceptance_criteria": ["Criterion 1"],
-          "features": [
-            {{"name": "Feature", "description": "What to build", "complexity": "S"}}
-          ]
-        }}
-      ]
-    }}
-  ],
-  "technical_architecture": {{
-    "overview": "Architecture description",
-    "components": ["Component 1"],
-    "data_model": [{{"entity": "Name", "fields": ["field: type"], "relationships": "desc"}}],
-    "api_endpoints": [{{"method": "GET", "path": "/api/x", "description": "desc"}}]
-  }},
-  "non_functional_requirements": {{
-    "performance": ["Req 1"],
-    "security": ["Req 1"],
-    "scalability": ["Req 1"]
-  }},
-  "implementation_roadmap": {{
-    "mvp_scope": "MVP description",
-    "phases": [{{"name": "Phase 1", "epics": ["Epic"], "description": "desc"}}]
-  }}
-}}
-
-Create 4-6 epics with 3-5 user stories each. Be specific and technical."""
-
-
-def build_fallback_enhanced_idea(app_idea: str, tech_preferences: Optional[str] = None) -> dict:
-    """Fallback enhanced idea when Gemini parsing fails."""
-    title = app_idea.strip().split('.')[0].split('\n')[0][:80]
-    if len(title) < 5:
-        title = "Application Project"
-
-    tech_stack = {"frontend": ["React", "TypeScript"], "backend": ["Python", "FastAPI"],
-                  "database": ["PostgreSQL"], "infrastructure": ["Docker"]}
-
-    return {
-        "title": title,
-        "description": app_idea,
-        "target_users": "End users who need the described functionality",
-        "problem_statement": f"Users need: {app_idea[:200]}",
-        "key_value_props": ["Solves the core need", "Modern architecture", "Production-ready"],
-        "suggested_tech_stack": tech_stack
-    }
-
-
-def build_fallback_prd(enhanced_idea: dict) -> dict:
-    """Fallback PRD when Gemini parsing fails."""
-    title = enhanced_idea.get("title", "Application")
-    return {
-        "product_overview": {
-            "vision": f"Build {title}",
-            "goals": ["Deliver core functionality", "Clean codebase", "Good documentation"],
-            "success_metrics": ["All features implemented", "App runs without errors"]
-        },
-        "epics": [
-            {
-                "name": "Project Foundation",
-                "description": "Project structure and setup",
-                "priority": "P0",
-                "user_stories": [{
-                    "title": "Project Setup",
-                    "story": "As a developer, I want a structured project so I can develop efficiently",
-                    "acceptance_criteria": ["Project structure follows best practices", "Dependencies installable"],
-                    "features": [
-                        {"name": "Scaffolding", "description": "Create project structure", "complexity": "S"}
-                    ]
-                }]
-            },
-            {
-                "name": "Core Features",
-                "description": "Primary application functionality",
-                "priority": "P0",
-                "user_stories": [{
-                    "title": "Core Logic",
-                    "story": "As a user, I want the main features so I can accomplish my goals",
-                    "acceptance_criteria": ["Core functionality works", "Error handling in place"],
-                    "features": [
-                        {"name": "Business logic", "description": "Main application features", "complexity": "L"},
-                        {"name": "UI", "description": "User-facing interface", "complexity": "M"}
-                    ]
-                }]
-            },
-            {
-                "name": "Data Layer",
-                "description": "Data storage and access",
-                "priority": "P0",
-                "user_stories": [{
-                    "title": "Data Persistence",
-                    "story": "As a user, I want data to persist so I can access it later",
-                    "acceptance_criteria": ["Data stored reliably", "CRUD operations work"],
-                    "features": [
-                        {"name": "Database schema", "description": "Data models", "complexity": "M"},
-                        {"name": "Data access", "description": "Repository pattern", "complexity": "M"}
-                    ]
-                }]
-            },
-            {
-                "name": "Testing",
-                "description": "Automated testing",
-                "priority": "P1",
-                "user_stories": [{
-                    "title": "Automated Tests",
-                    "story": "As a developer, I want tests so I can refactor safely",
-                    "acceptance_criteria": ["Unit tests cover core logic", "Tests runnable with one command"],
-                    "features": [
-                        {"name": "Unit tests", "description": "Test core modules", "complexity": "M"}
-                    ]
-                }]
-            }
-        ],
-        "technical_architecture": {
-            "overview": f"Architecture for {title}",
-            "components": ["Frontend", "Backend API", "Database"],
-            "data_model": [],
-            "api_endpoints": []
-        },
-        "non_functional_requirements": {
-            "performance": ["Sub-2s response times"],
-            "security": ["Input validation", "Secrets in env vars"],
-            "scalability": ["Stateless design"]
-        },
-        "implementation_roadmap": {
-            "mvp_scope": "Foundation + Core + Data",
-            "phases": [
-                {"name": "Phase 1: Foundation", "epics": ["Project Foundation"], "description": "Setup"},
-                {"name": "Phase 2: Core", "epics": ["Core Features", "Data Layer"], "description": "Main features"},
-                {"name": "Phase 3: Quality", "epics": ["Testing"], "description": "Tests and polish"}
-            ]
-        }
-    }
-
-
-def prd_to_markdown(prd: dict, enhanced_idea: dict) -> str:
-    """Convert PRD data to Markdown."""
-    lines = []
-    title = enhanced_idea.get("title", "Application")
-    lines.append(f"# Product Requirements Document: {title}\n")
-
-    overview = prd.get("product_overview", {})
-    lines.append("## Product Overview\n")
-    lines.append(f"**Vision:** {overview.get('vision', '')}\n")
-
-    if enhanced_idea.get("description"):
-        lines.append(f"**Description:** {enhanced_idea['description']}\n")
-
-    lines.append("### Goals")
-    for g in overview.get("goals", []):
-        lines.append(f"- {g}")
-    lines.append("")
-
-    lines.append("## Epics & User Stories\n")
-    for i, epic in enumerate(prd.get("epics", []), 1):
-        lines.append(f"### Epic {i}: {epic['name']} [{epic.get('priority', 'P1')}]")
-        lines.append(f"_{epic.get('description', '')}_\n")
-        for j, story in enumerate(epic.get("user_stories", []), 1):
-            lines.append(f"#### Story {i}.{j}: {story['title']}")
-            lines.append(f"> {story.get('story', '')}\n")
-            lines.append("**Acceptance Criteria:**")
-            for ac in story.get("acceptance_criteria", []):
-                lines.append(f"- [ ] {ac}")
-            lines.append("\n**Features:**")
-            for f in story.get("features", []):
-                lines.append(f"- `[{f.get('complexity','M')}]` **{f['name']}** — {f.get('description','')}")
-            lines.append("")
-
-    arch = prd.get("technical_architecture", {})
-    if arch:
-        lines.append("## Technical Architecture\n")
-        lines.append(f"{arch.get('overview', '')}\n")
-
-    lines.append("---\n*Generated by JD Automation System*")
-    return "\n".join(lines)
 
 
 if __name__ == "__main__":

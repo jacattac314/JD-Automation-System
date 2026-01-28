@@ -602,6 +602,48 @@ body {
     }
 }
 
+/* Auth UI */
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-primary);
+}
+
+.user-name {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s;
+}
+
+.btn-sm:hover {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+.btn-primary.btn-sm {
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+}
+
 /* Toast Notifications */
 .toast-container {
     position: fixed;
