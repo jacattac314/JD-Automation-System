@@ -125,11 +125,9 @@ async function startRunWithSSE() {
     const hasAuth = !!authToken;
     const hasKeys = settings.geminiKey && settings.githubToken;
 
-    if (!hasAuth && !hasKeys) {
-        showToast('error', 'Authentication Required',
-            'Please sign in with GitHub or configure API keys in Settings.');
-        return;
-    }
+    // Validation relaxed to allow backend-configured keys to work
+    // if (!hasAuth && !hasKeys) { ... }
+    console.log("Proceeding with run (relying on backend configuration if client keys are missing)...");
 
     // Show progress
     document.getElementById('progress-section').style.display = 'block';
@@ -297,7 +295,6 @@ async function startRunWithSSE() {
 }
 
 // Rename old startRun to startRunLegacy as fallback
-async function startRunLegacy() {
 
 // ============ Toast Notification System ============
 function initToasts() {
@@ -662,6 +659,8 @@ function countFeatures(prd) {
 function startRun() {
     return startRunWithSSE();
 }
+
+async function startRunLegacy() {
     const appIdea = document.getElementById('idea-input').value.trim();
     const techPrefs = document.getElementById('tech-preferences').value.trim();
 

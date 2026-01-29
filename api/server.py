@@ -65,7 +65,7 @@ if UI_DIR.exists():
 # ============ Request/Response Models ============
 
 class CreateRepoRequest(BaseModel):
-    token: str
+    token: Optional[str] = None
     name: str
     description: Optional[str] = ""
     private: bool = True
@@ -81,7 +81,7 @@ class CreateRepoResponse(BaseModel):
 
 
 class ValidateTokenRequest(BaseModel):
-    token: str
+    token: Optional[str] = None
 
 
 class ValidateTokenResponse(BaseModel):
@@ -91,16 +91,16 @@ class ValidateTokenResponse(BaseModel):
 
 
 class PushFilesRequest(BaseModel):
-    token: str
+    token: Optional[str] = None
     repo_full_name: str
     files: dict  # {"path": "content", ...}
     commit_message: str = "Initial commit from JD Automation"
 
 
 class StartRunRequest(BaseModel):
-    gemini_key: str
-    github_token: str
-    github_username: str
+    gemini_key: Optional[str] = None
+    github_token: Optional[str] = None
+    github_username: Optional[str] = None
     app_idea: str
     tech_preferences: Optional[str] = None
     private: bool = True
@@ -116,7 +116,7 @@ class StartRunRequest(BaseModel):
 
 
 class EnhanceIdeaRequest(BaseModel):
-    gemini_key: str
+    gemini_key: Optional[str] = None
     app_idea: str
     tech_preferences: Optional[str] = None
 
@@ -128,7 +128,7 @@ class EnhanceIdeaResponse(BaseModel):
 
 
 class GeneratePRDRequest(BaseModel):
-    gemini_key: str
+    gemini_key: Optional[str] = None
     enhanced_idea: dict
 
 
@@ -261,7 +261,10 @@ async def list_runs(token_data: dict = Depends(require_auth), limit: int = 50, o
 async def validate_token(request: ValidateTokenRequest):
     """Validate GitHub token and return username."""
     try:
-        client = Github(request.token)
+        token = request.token or settings.github_token
+        if not token:
+             return ValidateTokenResponse(valid=False, message="No GitHub token provided or configured")
+        client = Github(token)
         user = client.get_user()
         username = user.login
         return ValidateTokenResponse(valid=True, username=username)
@@ -275,7 +278,10 @@ async def validate_token(request: ValidateTokenRequest):
 async def create_repo(request: CreateRepoRequest):
     """Create a new GitHub repository."""
     try:
-        client = Github(request.token)
+        token = request.token or settings.github_token
+        if not token:
+             raise HTTPException(status_code=400, detail="No GitHub token provided or configured")
+        client = Github(token)
         user = client.get_user()
 
         # Sanitize repo name
@@ -314,7 +320,10 @@ async def create_repo(request: CreateRepoRequest):
 async def push_files(request: PushFilesRequest):
     """Push files to an existing GitHub repository."""
     try:
-        client = Github(request.token)
+        token = request.token or settings.github_token
+        if not token:
+             raise HTTPException(status_code=400, detail="No GitHub token provided or configured")
+        client = Github(token)
         repo = client.get_repo(request.repo_full_name)
 
         results = []
@@ -353,7 +362,8 @@ async def enhance_idea(request: EnhanceIdeaRequest):
     """Enhance a raw application idea using Gemini AI."""
     try:
         # Client handles fallback if key is invalid or API fails
-        client = GeminiClient(api_key=request.gemini_key)
+        gemini_key = request.gemini_key or settings.gemini_api_key
+        client = GeminiClient(api_key=gemini_key)
         enhanced = client.enhance_idea(request.app_idea, request.tech_preferences)
         return EnhanceIdeaResponse(success=True, enhanced_idea=enhanced)
     except Exception as e:
@@ -364,7 +374,8 @@ async def enhance_idea(request: EnhanceIdeaRequest):
 async def generate_prd(request: GeneratePRDRequest):
     """Generate a comprehensive PRD with epics, user stories, and features."""
     try:
-        client = GeminiClient(api_key=request.gemini_key)
+        gemini_key = request.gemini_key or settings.gemini_api_key
+        client = GeminiClient(api_key=gemini_key)
         result = client.generate_prd(request.enhanced_idea)
         return GeneratePRDResponse(
             success=True, 
@@ -427,7 +438,7 @@ async def stream_run_progress(run_id: str):
                 yield f"data: {json.dumps(event, default=str)}\n\n"
 
                 # Stop streaming when pipeline finishes
-                if event.get("status") in ("completed", "failed"):
+                if event.get("step") == "pipeline" and event.get("status") in ("completed", "failed"):
                     break
             except asyncio.TimeoutError:
                 # Send keepalive
@@ -481,7 +492,8 @@ def _execute_pipeline(run_id: str, request: StartRunRequest):
     try:
         # Step 1: Enhance idea
         emit("enhance_idea", "in_progress", "Enhancing application idea with AI...")
-        gemini = GeminiClient(api_key=request.gemini_key)
+        gemini_key = request.gemini_key or settings.gemini_api_key
+        gemini = GeminiClient(api_key=gemini_key)
         enhanced_idea = gemini.enhance_idea(request.app_idea, request.tech_preferences)
         emit("enhance_idea", "completed", f"Enhanced: {enhanced_idea.get('title', 'Untitled')}")
         run_state["enhanced_idea"] = enhanced_idea
@@ -499,7 +511,10 @@ def _execute_pipeline(run_id: str, request: StartRunRequest):
         # Step 3: Create GitHub repo
         emit("create_repo", "in_progress", "Creating GitHub repository...")
         try:
-            client = Github(request.github_token)
+            token = request.github_token or settings.github_token
+            if not token:
+                 raise ValueError("No GitHub token configured")
+            client = Github(token)
             user = client.get_user()
             repo_name = sanitize_repo_name(enhanced_idea.get("title", "project"))
             base_name = repo_name

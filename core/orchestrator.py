@@ -472,15 +472,15 @@ _Setup instructions will be added during implementation._
 ---
 *Generated on {datetime.now().strftime('%Y-%m-%d')} by JD Automation System*
 """
-        (path / "README.md").write_text(readme)
+        (path / "README.md").write_text(readme, encoding="utf-8")
 
         # PRD document
         docs_path = path / "docs"
         docs_path.mkdir(exist_ok=True)
-        (docs_path / "PRD.md").write_text(prd_markdown)
+        (docs_path / "PRD.md").write_text(prd_markdown, encoding="utf-8")
 
         # Structured PRD as JSON for programmatic access
-        (docs_path / "prd.json").write_text(json.dumps(prd, indent=2))
+        (docs_path / "prd.json").write_text(json.dumps(prd, indent=2), encoding="utf-8")
 
         # Enhanced idea metadata
         (path / "project.json").write_text(json.dumps({
@@ -497,7 +497,7 @@ _Setup instructions will be added during implementation._
                 for story in epic.get('user_stories', [])
                 for feat in [story.get('features', [])]
             )
-        }, indent=2))
+        }, indent=2), encoding="utf-8")
 
         # Create epic-level docs
         epics_path = docs_path / "epics"
@@ -518,14 +518,14 @@ _Setup instructions will be added during implementation._
                 for feat in story.get('features', []):
                     epic_content += f"- `[{feat.get('complexity', 'M')}]` **{feat['name']}** — {feat.get('description', '')}\n"
                 epic_content += "\n"
-            (epics_path / epic_filename).write_text(epic_content)
+            (epics_path / epic_filename).write_text(epic_content, encoding="utf-8")
 
     def _save_run_history(self):
         """Save run to local history."""
         history_file = config.data_dir / "runs.json"
 
         if history_file.exists():
-            history = json.loads(history_file.read_text())
+            history = json.loads(history_file.read_text(encoding="utf-8"))
         else:
             history = []
 
@@ -543,4 +543,4 @@ _Setup instructions will be added during implementation._
             "elapsed_time": self.run_data.get('elapsed_time')
         })
 
-        history_file.write_text(json.dumps(history, indent=2))
+        history_file.write_text(json.dumps(history, indent=2), encoding="utf-8")
